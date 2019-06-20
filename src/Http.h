@@ -1,37 +1,28 @@
-#ifndef CM2_REALTIME_HTTP_H
-#define CM2_REALTIME_HTTP_H
+#ifndef HTTP_H
+#define HTTP_H
 
 #include "curl/curl.h"
 #include "string"
 #include "vector"
 #include "map"
 #include "time.h"
-#include "../utils.h"
-#include "mutex"
-
-struct HttpResponse {
-    float requestTime;
-    std::string rawResponse;
-    int sizeBytes = 0;
-    int code = 200;
-};
+#include "utils.h"
 
 class Http {
 protected:
     CURL *curl = nullptr;
     CURLcode res;
 
-    bool verbose = true;
-
+    std::string socks5Credentials;
 public:
     HttpResponse request(const std::string &url);
 
     virtual ~Http();
 
-    bool isVerbose() const;
+    const std::string &getSocks5Credentials() const;
 
-    void setVerbose(bool verbose);
+    void setSocks5Credentials(const std::string &socks5Credentials);
 };
 
 
-#endif //CM2_REALTIME_HTTP_H
+#endif //HTTP_H

@@ -7,7 +7,10 @@
 #include "regex"
 #include <cstdarg>
 #include <thread>
+#include <fmt/format.h>
+#include <sys/sysinfo.h>
 
+#define DEBUG true
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -20,13 +23,49 @@
 #define START_TIMER std::chrono::high_resolution_clock::now()
 #define END_TIMER_MS std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start).count()
 
-#define CSIZE(array) sizeof(array) / sizeof(array[0])
+struct HttpResponse {
+    float requestTime;
+    std::string rawResponse;
+    int sizeBytes = 0;
+    int code = 200;
+};
 
-std::map<std::string, std::string> parse_argv(int argc, char *argv[]);
+struct Socks5Credentials {
+    std::string host;
+    std::string login;
+    std::string password;
+    int port = -1;
+};
+
+struct BotCredentials {
+    std::string apiKey;
+    int64_t chatId;
+};
+
+struct SystemLoadAverage {
+    std::string raw = "";
+
+    bool executed = false;
+    int cores = 0;
+
+    float min1Percentage = 0;
+    float min5Percentage = 0;
+    float min15Percentage = 0;
+
+    float min1 = 0;
+    float min5 = 0;
+    float min15 = 0;
+};
+
+#define CSIZE(array) sizeof(array) / sizeof(array[0])
 
 void message_ok(const char *fmt, ...);
 
 void message_error(const char *fmt, ...);
+
+SystemLoadAverage read_load_avg();
+
+std::string read_hostname();
 
 std::string implode(const std::vector<std::string> &source, const std::string &delimiter);
 

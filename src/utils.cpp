@@ -87,66 +87,88 @@ void message_ok(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
 
-    vfprintf(stdout, cpp_format.c_str(), args);
+    //Dirty hack for docker
+    vfprintf(stderr, cpp_format.c_str(), args);
     va_end(args);
 }
 
 size_t curl_callback(void *contents, size_t size, size_t nmemb, std::string *s) {
-    size_t
-    newLength = size * nmemb;
+    size_t newLength = size * nmemb;
 
     try {
         s->append((char *) contents, newLength);
-    }
-    catch (std::bad_alloc &e) {
-        cm2_message_error("%s", e.what());
+    } catch (std::bad_alloc &e) {
+        message_error("%s", e.what());
         return 1;
     }
 
     return newLength;
 }
 
-/**
- *
- * @param argv
- * @return
- */
-std::map<std::string, std::string> parse_argv(int argc, char **argv) {
-    std::vector<LiveMode> availableModes = {
-            LiveMode::MODE_DAEMON,
-            LiveMode::MODE_SportradarGlobalIceHockeyV1,
-            LiveMode::MODE_SportradarSoccerV3,
-            LiveMode::MODE_SportradarTennisV2
-    };
+SystemLoadAverage read_load_avg() {
+    auto now = std::chrono::system_clock::now();
+    int cores = get_nprocs();
 
-    auto result = std::map<std::string, std::string>();
-    std::vector<std::string> arguments(argv, argv + argc);
+    std::string proc = "/lavg/proc/loadavg";
+    std::ifstream stream;
+    std::string data;
 
-    for (auto &argument:arguments) {
-        auto e = explode(argument, '=');
+    SystemLoadAverage result = {};
+    stream.open(proc);
 
-        if (e.size() != 2) {
-            continue;
-        }
-
-        auto name = e[0];
-        auto value = e[1];
-
-        name = regex_replace(name, std::regex(R"(-|\s)"), "");
-
-        if (name == "mode" && !vector_contains(availableModes, static_cast<LiveMode >(std::stoi(value)))) {
-            cm2_message_error("Mode %s does not exists", value.c_str());
-            exit(1);
-        }
-
-        result.insert(std::pair(name, value));
+    if (stream.good()) {
+        data.assign((std::istreambuf_iterator<char>(stream)), (std::istreambuf_iterator<char>()));
+        stream.close();
+    } else {
+        message_error("Error while reading %s, are you on linux? Are container volumes ok?", proc.c_str());
+        exit(1);
     }
 
-    if (result["mode"].empty()) {
-        result["mode"] = std::to_string(static_cast<int>(LiveMode::MODE_SportradarSoccerV3));
+    auto array = explode(data, ' ');
+
+    result.raw = data;
+    result.cores = cores;
+
+    result.min1 = std::strtod(array[0].c_str(), nullptr);
+    result.min5 = std::strtod(array[1].c_str(), nullptr);
+    result.min15 = std::strtod(array[2].c_str(), nullptr);
+
+    result.min1Percentage = result.min1 / cores * 100;
+    result.min5Percentage = result.min5 / cores * 100;
+    result.min15Percentage = result.min15 / cores * 100;
+
+    result.executed = true;
+
+    if (DEBUG == 1) {
+        message_ok(
+                "Load avg read %.2f, %.2f, %.2f, %.2f%, %.2f%, %.2f%",
+                result.min1,
+                result.min5,
+                result.min15,
+                result.min1Percentage,
+                result.min5Percentage,
+                result.min15Percentage
+        );
     }
 
     return result;
 }
 
+std::string read_hostname() {
+    std::string proc = "/lavg/proc/sys/kernel/hostname";
+    std::ifstream stream;
+    std::string data;
 
+    stream.open(proc);
+
+    if (stream.good()) {
+        data.assign((std::istreambuf_iterator<char>(stream)), (std::istreambuf_iterator<char>()));
+        stream.close();
+    } else {
+        message_error("Error while reading %s, are you on linux? Are container volumes ok?", proc.c_str());
+        exit(1);
+    }
+
+    data = std::regex_replace(data, std::regex("\n"), "");
+    return data;
+}

@@ -3,146 +3,89 @@
 #include <vector>
 #include <chrono>
 #include <map>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <libnet.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "src/utils.h"
+#include "src/Http.h"
 
-#define VERBOSITY 1
+int lastMessageSentUnixTime = 0;
+int maxNotificationIntervalSeconds = 60;
 
-struct SystemLoadAverage {
-    std::string raw = "";
-    bool executed = false;
+void sendTgAlert(
+        const float maxLoadAllowed,
+        const SystemLoadAverage &systemLoadAverage,
+        const std::string &socks5Credentials,
+        const BotCredentials &botCredentials = {}
+) {
+    int64_t unixTime = (unsigned long) time(NULL);
 
-    float min1 = 0;
-    float min5 = 0;
-    float min15 = 0;
-};
-
-struct HttResponse {
-    std::map<std::string, std::string> headers;
-    std::string body;
-    int code = 0;
-};
-
-HttResponse request(const std::string &host, const int &port, const std::string &uri) {
-    HttResponse result = {};
-
-    int sock = 0;
-    int sockConnection = 0;
-    int sockSent = 0;
-    int sockRead = 0;
-
-    struct sockaddr_in serverInfo = {};
-
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        printf("Error creating socket\n Code %d", sock);
-        return result;
+    if (lastMessageSentUnixTime + maxNotificationIntervalSeconds > unixTime) {
+        return;
     }
 
-    serverInfo.sin_family = AF_INET;
-    serverInfo.sin_port = htons(port);
+    std::string hostname = read_hostname();
+    auto http = new Http();
 
-    if (inet_pton(AF_INET, host.c_str(), &serverInfo.sin_addr) <= 0) {
-        printf("Invalid address/ Address not supported \n");
-        return result;
-    }
+    http->setSocks5Credentials(socks5Credentials);
+    std::string tgMessage = fmt::format(
+            "[Warning] load average {} on server {} is {:.2f}% ({:.2f}% max allowed)",
+            "5 min",
+            hostname,
+            systemLoadAverage.min5Percentage,
+            maxLoadAllowed
+    );
 
-    if ((sockConnection = connect(sock, (struct sockaddr *) &serverInfo, sizeof(serverInfo))) < 0) {
-        printf("Connection Failed\n Code %d", sockConnection);
-        return result;
-    }
+    std::string encodedTgMessage(curl_easy_escape(nullptr, tgMessage.c_str(), tgMessage.length()));
+    std::string url = fmt::format(
+            "https://api.telegram.org/bot{}/sendMessage?chat_id={}&text={}",
+            botCredentials.apiKey,
+            botCredentials.chatId,
+            encodedTgMessage
+    );
 
-    std::string httpMessage = "GET / HTTP/1.1\nHost: localhost\nConnection: close\n\n";
-
-    if ((sockSent = send(sock, httpMessage.c_str(), httpMessage.size(), 0)) < 0) {
-        printf("Sending http request failed\n Code %d", sockSent);
-        return result;
-    } else {
-        if (VERBOSITY == 1) {
-            printf("Sent %d characters to %s:%d\n", sockSent, host.c_str(), port);
-        }
-    }
-
-    std::string rawResult;
-    char buf[1024];
-
-    while (read(sock, buf, 1024) != 0) {
-        rawResult += buf;
-    }
-
-    return result;
+    auto response = http->request(url);
+    lastMessageSentUnixTime = unixTime;
 }
-
-const std::string currentDateTime() {
-    time_t now = time(nullptr);
-    struct tm tstruct = {};
-
-    char buf[80];
-    tstruct = *localtime(&now);
-    strftime(buf, sizeof(buf), "%Y-%m-%d %X", &tstruct);
-
-    return buf;
-}
-
-std::vector<std::string> split(const std::string &source, const char &delimiter) {
-    std::vector<std::string> vbuf = {};
-    std::string buf;
-
-    for (char c : source) {
-        if (c == delimiter || c == '\000' || c == '\n') {
-            vbuf.emplace_back(buf);
-            buf = "";
-        } else {
-            buf += c;
-        }
-    }
-
-    return vbuf;
-}
-
-void sendTgMessage(const int64_t &chatId, const std::string &message) {
-
-}
-
-SystemLoadAverage readLoadAvg() {
-    auto now = std::chrono::system_clock::now();
-    std::string proc = "/proc/loadavg";
-    std::ifstream stream;
-    std::string data;
-    SystemLoadAverage result = {};
-
-    stream.open("/proc/loadavg");
-
-    if (stream.good()) {
-        data.assign((std::istreambuf_iterator<char>(stream)), (std::istreambuf_iterator<char>()));
-    } else {
-        printf("Error while reading %s, are you on linux os?", proc.c_str());
-        return result;
-    }
-
-    auto array = split(data, ' ');
-
-    result.raw = data;
-    result.min1 = std::strtod(array[0].c_str(), nullptr);
-    result.min5 = std::strtod(array[1].c_str(), nullptr);
-    result.min15 = std::strtod(array[2].c_str(), nullptr);
-    result.executed = true;
-
-    if (VERBOSITY == 1) {
-        printf(
-                "[%s] Load avg read %.2f, %.2f, %.2f\n",
-                currentDateTime().c_str(),
-                result.min1,
-                result.min5,
-                result.min15
-        );
-    }
-
-    return result;
-}
-
 
 int main() {
-//    auto avg = readLoadAvg();
-    sendTgMessage(0, "");
+    float max5minLoadPercentage = 5.0;
+    int monitoringPeriodSeconds = 3;
+
+    if (getenv("MAX_LOAD") != nullptr) {
+        max5minLoadPercentage = atof(getenv("MAX_LOAD"));
+    }
+
+    if (getenv("TG_KEY") == nullptr || getenv("TG_CHAT") == nullptr) {
+        message_error(
+                "Please specify TG_KEY and TG_CHAT env variables for telegram bot api key, and chat id respectively");
+        exit(1);
+    }
+
+    BotCredentials botCredentials;
+    botCredentials.apiKey = std::string(getenv("TG_KEY"));
+    botCredentials.chatId = atoi(getenv("TG_CHAT"));
+
+    std::string socks5Credentials;
+
+    if (getenv("TG_SOCKS5_PROXY") != nullptr) {
+        socks5Credentials = getenv("TG_SOCKS5_PROXY");
+    }
+
+    message_ok(
+            "lavg started monitoring interval = %d seconds, max load average value = %d%",
+            monitoringPeriodSeconds,
+            (int) max5minLoadPercentage
+    );
+
+    while (true) {
+        auto avg = read_load_avg();
+
+        if (avg.min5Percentage > max5minLoadPercentage) {
+            sendTgAlert(max5minLoadPercentage, avg, socks5Credentials, botCredentials);
+            message_ok("5 min average exceeded (max %.2f%% allowed)", max5minLoadPercentage);
+        }
+
+        sleep(monitoringPeriodSeconds);
+    }
 }

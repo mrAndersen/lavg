@@ -13,11 +13,13 @@ set(
         SOURCES
         avg.cpp
 
-        vendor/fmt/src/posix.cc
         vendor/fmt/src/format.cc
 
         src/Http.cpp
         src/Http.h
+
+        src/utils.cpp
+        src/utils.h
 )
 
 add_executable(loadAvg ${SOURCES})
