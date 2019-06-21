@@ -88,7 +88,12 @@ void message_ok(const char *fmt, ...) {
     va_start(args, fmt);
 
     //Dirty hack for docker
-    vfprintf(stderr, cpp_format.c_str(), args);
+    if (DOCKER_MODE) {
+        vfprintf(stderr, cpp_format.c_str(), args);
+    } else {
+        vfprintf(stdout, cpp_format.c_str(), args);
+    }
+
     va_end(args);
 }
 
@@ -106,10 +111,17 @@ size_t curl_callback(void *contents, size_t size, size_t nmemb, std::string *s) 
 }
 
 SystemLoadAverage read_load_avg() {
+    std::string proc;
+
     auto now = std::chrono::system_clock::now();
     int cores = get_nprocs();
 
-    std::string proc = "/lavg/proc/loadavg";
+    if (DOCKER_MODE) {
+        proc = "/proc_host/loadavg";
+    } else {
+        proc = "/proc/loadavg";
+    }
+
     std::ifstream stream;
     std::string data;
 
@@ -155,7 +167,14 @@ SystemLoadAverage read_load_avg() {
 }
 
 std::string read_hostname() {
-    std::string proc = "/lavg/proc/sys/kernel/hostname";
+    std::string proc;
+
+    if (DOCKER_MODE) {
+        proc = "/proc_host/sys/kernel/hostname";
+    } else {
+        proc = "/proc/sys/kernel/hostname";
+    }
+
     std::ifstream stream;
     std::string data;
 

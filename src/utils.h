@@ -10,7 +10,9 @@
 #include <fmt/format.h>
 #include <sys/sysinfo.h>
 
+
 #define DEBUG true
+#define DOCKER_MODE true
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -39,7 +41,7 @@ struct Socks5Credentials {
 
 struct BotCredentials {
     std::string apiKey;
-    int64_t chatId;
+    int64_t chatId = 0;
 };
 
 struct SystemLoadAverage {

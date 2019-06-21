@@ -10,7 +10,30 @@
 #include "src/Http.h"
 
 int lastMessageSentUnixTime = 0;
-int maxNotificationIntervalSeconds = 60;
+int maxNotificationIntervalSeconds = 120;
+
+void sendTgMessage(
+        const std::string &tgMessage,
+        const std::string &socks5Credentials,
+        const BotCredentials &botCredentials = {}
+) {
+    if (botCredentials.chatId == 0) {
+        return;
+    }
+
+    auto http = new Http();
+    http->setSocks5Credentials(socks5Credentials);
+
+    std::string encodedTgMessage(curl_easy_escape(nullptr, tgMessage.c_str(), tgMessage.length()));
+    std::string url = fmt::format(
+            "https://api.telegram.org/bot{}/sendMessage?chat_id={}&text={}",
+            botCredentials.apiKey,
+            botCredentials.chatId,
+            encodedTgMessage
+    );
+
+    auto response = http->request(url);
+}
 
 void sendTgAlert(
         const float maxLoadAllowed,
@@ -25,9 +48,6 @@ void sendTgAlert(
     }
 
     std::string hostname = read_hostname();
-    auto http = new Http();
-
-    http->setSocks5Credentials(socks5Credentials);
     std::string tgMessage = fmt::format(
             "[Warning] load average {} on server {} is {:.2f}% ({:.2f}% max allowed)",
             "5 min",
@@ -36,21 +56,13 @@ void sendTgAlert(
             maxLoadAllowed
     );
 
-    std::string encodedTgMessage(curl_easy_escape(nullptr, tgMessage.c_str(), tgMessage.length()));
-    std::string url = fmt::format(
-            "https://api.telegram.org/bot{}/sendMessage?chat_id={}&text={}",
-            botCredentials.apiKey,
-            botCredentials.chatId,
-            encodedTgMessage
-    );
-
-    auto response = http->request(url);
+    sendTgMessage(tgMessage, socks5Credentials, botCredentials);
     lastMessageSentUnixTime = unixTime;
 }
 
 int main() {
-    float max5minLoadPercentage = 5.0;
-    int monitoringPeriodSeconds = 3;
+    float max5minLoadPercentage = 60.0;
+    int monitoringPeriodSeconds = 10;
 
     if (getenv("MAX_LOAD") != nullptr) {
         max5minLoadPercentage = atof(getenv("MAX_LOAD"));
@@ -67,16 +79,21 @@ int main() {
     botCredentials.chatId = atoi(getenv("TG_CHAT"));
 
     std::string socks5Credentials;
+    auto hostname = read_hostname();
 
     if (getenv("TG_SOCKS5_PROXY") != nullptr) {
         socks5Credentials = getenv("TG_SOCKS5_PROXY");
     }
 
-    message_ok(
-            "lavg started monitoring interval = %d seconds, max load average value = %d%",
+    std::string welcomeMessage = fmt::format(
+            "lavg started monitoring, interval = {:d} seconds, max load average value = {:d}%, hostname = {}",
             monitoringPeriodSeconds,
-            (int) max5minLoadPercentage
+            (int) max5minLoadPercentage,
+            hostname
     );
+
+    message_ok(welcomeMessage.c_str());
+    sendTgMessage(welcomeMessage, socks5Credentials, botCredentials);
 
     while (true) {
         auto avg = read_load_avg();
