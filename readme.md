@@ -1,4 +1,4 @@
-# Usage
+Usage
 ```
 docker run -d \
     --privileged \
