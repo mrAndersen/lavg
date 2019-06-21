@@ -1,4 +1,4 @@
-###Usage
+# Usage
 ```
 docker run -d \
     --privileged \
@@ -7,6 +7,7 @@ docker run -d \
     -e TG_KEY=<YOUR BOT API KEY> \
     -e TG_CHAT=<CHAT ID> \
     -e TG_SOCKS5_PROXY=<Socks5 proxy if tg is blocked in your country> \
+    -e MAX_LOAD=<Max percentage of load allowed> \
     -v /proc:/proc_host \
     mrandersen7/lavg
 ```
