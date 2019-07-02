@@ -11,7 +11,7 @@
 #include <sys/sysinfo.h>
 
 
-#define DEBUG true
+#define DEBUG false
 #define DOCKER_MODE true
 
 #define ANSI_COLOR_RED     "\x1b[31m"

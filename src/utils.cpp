@@ -151,7 +151,7 @@ SystemLoadAverage read_load_avg() {
 
     result.executed = true;
 
-    if (DEBUG == 1) {
+    if (DEBUG) {
         message_ok(
                 "Load avg read %.2f, %.2f, %.2f, %.2f%, %.2f%, %.2f%",
                 result.min1,
